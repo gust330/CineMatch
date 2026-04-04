@@ -8,9 +8,11 @@ if (!API_KEY) {
 
 const genAI = new GoogleGenerativeAI(API_KEY || '');
 
-// Gemini 2.0 Flash - modelo mais recente
+// Tentar vários modelos até encontrar um que funcione
+const MODEL_NAME = 'gemini-1.5-flash-8b';
+
 const model = genAI.getGenerativeModel({ 
-  model: 'gemini-2.0-flash-exp',
+  model: MODEL_NAME,
   generationConfig: {
     responseMimeType: "application/json",
   }

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../services/supabase';
 import { geminiService } from '../services/gemini';
+import { openRouterService } from '../services/openrouter';
 import { omdbService } from '../services/omdb';
 import { MainLayout } from '../layouts/MainLayout';
 import { MovieCard } from '../components/MovieCard';
@@ -38,7 +39,7 @@ export const HomePage: React.FC = () => {
         return;
       }
 
-      // 3. Formatar histórico para a Gemini (Interface Simplificada)
+      // 3. Formatar histórico para a IA
       const formattedHistory = historyData.map(item => ({
         title: item.title,
         rating: item.rating,
@@ -46,8 +47,26 @@ export const HomePage: React.FC = () => {
         user_note: item.user_note
       }));
 
-      // 4. Chamar Gemini para recomendações
-      const aiResponse = await geminiService.getRecommendations(formattedHistory as any);
+      // 4. Tentar Gemini primeiro, se falhar usar fallback de filmes populares
+      let aiResponse;
+      try {
+        aiResponse = await geminiService.getRecommendations(formattedHistory as any);
+      } catch (geminiError) {
+        console.warn('IA falhou. A usar filmes populares...');
+        // Fallback: buscar filmes populares diretamente
+        const popularMovies = await omdbService.getPopular();
+        setRecommendations(popularMovies.map(m => ({
+          imdbID: m.imdbID,
+          Title: m.Title,
+          Year: m.Year,
+          Type: m.Type,
+          Poster: m.Poster,
+          aiReason: 'Um clássico que não podes perder!',
+          imdbRating: m.imdbRating
+        })));
+        setLoading(false);
+        return;
+      }
       
       // 5. Cruzar sugestões com OMDb para obter posters e detalhes reais
       const enrichedMovies = await Promise.all(

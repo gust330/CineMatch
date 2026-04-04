@@ -28,7 +28,6 @@ export const omdbService = {
     
     if (data.Response === 'False') return [];
     
-    // Filtrar apenas filmes e séries que têm poster
     return data.Search.filter((item: any) => 
       (item.Type === 'movie' || item.Type === 'series') && item.Poster !== 'N/A'
     );
@@ -41,5 +40,24 @@ export const omdbService = {
     
     if (data.Response === 'False') return null;
     return data;
+  },
+
+  getPopular: async (): Promise<OMDBMovie[]> => {
+    const popularTitles = [
+      'The Godfather', 'The Shawshank Redemption', 'The Dark Knight', 
+      'Pulp Fiction', 'Forrest Gump', 'Inception', 'The Matrix', 
+      'Goodfellas', 'Star Wars', 'Parasite', 'Interstellar', 'The Lord of the Rings'
+    ];
+    
+    const shuffled = popularTitles.sort(() => 0.5 - Math.random()).slice(0, 4);
+    
+    const results = await Promise.all(
+      shuffled.map(async (title) => {
+        const movies = await omdbService.search(title);
+        return movies[0];
+      })
+    );
+    
+    return results.filter(Boolean) as OMDBMovie[];
   }
 };
