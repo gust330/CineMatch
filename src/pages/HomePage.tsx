@@ -231,13 +231,18 @@ export const HomePage: React.FC = () => {
     const newRejected = [...rejected, movie.imdbID];
     localStorage.setItem(STORAGE_KEYS.rejectedIds, JSON.stringify(newRejected));
 
-    // Remover da lista
+    // Remover da lista APENAS - não substituir automaticamente
     const newRecs = recommendations.filter(m => m.imdbID !== movie.imdbID);
     setRecommendations(newRecs);
 
     // Atualizar cache
     const seen = JSON.parse(localStorage.getItem(STORAGE_KEYS.seenIds) || '[]');
     saveToCache(newRecs, newRejected, seen);
+  };
+
+  const handleGetMore = () => {
+    // Chamar novas recomendações manuais
+    fetchRecommendations(true);
   };
 
   return (
@@ -309,6 +314,20 @@ export const HomePage: React.FC = () => {
           ))
         )}
       </div>
+
+      {/* Botão para obter mais recomendações */}
+      {!loading && recommendations.length > 0 && (
+        <div className="mt-12 text-center">
+          <Button 
+            variant="outline" 
+            onClick={handleGetMore}
+            className="rounded-full px-8"
+          >
+            <RefreshCcw className="mr-2 h-4 w-4" />
+            Ver Mais Recomendações
+          </Button>
+        </div>
+      )}
 
       {!loading && recommendations.length === 0 && !error && (
         <div className="py-24 text-center">

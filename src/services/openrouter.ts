@@ -45,8 +45,7 @@ Rules:
 3. Respond ONLY in valid JSON:
 {"recommendations": [{"title": "Title", "media_type": "movie", "year": "2024", "ai_reason": "Justification"}]}
 `;
-
-    // Try each model until one works
+    
     let lastError = null;
     
     for (const modelName of models) {
