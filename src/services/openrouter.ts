@@ -20,7 +20,7 @@ export interface RecommendationResponse {
 }
 
 export const openRouterService = {
-  getRecommendations: async (history: UserRating[]): Promise<RecommendationResponse> => {
+  getRecommendations: async (history: UserRating[], rejectedTitles: string[] = []): Promise<RecommendationResponse> => {
     // Modelos gratuitos conhecidos por funcionar na OpenRouter
     const models = [
       'mistralai/mistral-7b-instruct',
@@ -28,14 +28,19 @@ export const openRouterService = {
       'google/gemma-2-9b-it'
     ];
 
+    // Adicionar filmes rejeitados ao prompt para evitar repetidos
+    const rejectedSection = rejectedTitles.length > 0 
+      ? `\n\nALSO AVOID these titles that were already rejected by the user:\n${rejectedTitles.map(t => `- ${t}`).join('\n')}`
+      : '';
+
     const prompt = `
-You are a movie and series expert. Based on the user's viewing history below, recommend 5 movies or series they will probably love.
+You are a movie and series expert. Based on the user's viewing history below, recommend 4 movies or series they will probably love.
 
 User's history:
-${history.map(item => `- ${item.title} (${item.media_type}): Rating ${item.rating}/10`).join('\n')}
+${history.map(item => `- ${item.title} (${item.media_type}): Rating ${item.rating}/10`).join('\n')}${rejectedSection}
 
 Rules:
-1. Recommend only 4 titles NOT in the history above.
+1. Recommend only 4 titles NOT in the history above and NOT in the rejected list.
 2. For each, give the original title, type (movie or series), release year, and a brief justification (max 2 sentences).
 3. Respond ONLY in valid JSON:
 {"recommendations": [{"title": "Title", "media_type": "movie", "year": "2024", "ai_reason": "Justification"}]}

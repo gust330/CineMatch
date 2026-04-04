@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../services/supabase';
 import { openRouterService } from '../services/openrouter';
 import { omdbService } from '../services/omdb';
@@ -15,11 +15,23 @@ export const HomePage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [recommendations, setRecommendations] = useState<Movie[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [hasLoadedBefore, setHasLoadedBefore] = useState(false);
+  const [rejectedIds, setRejectedIds] = useState<string[]>([]);
   const navigate = useNavigate();
 
-  const fetchRecommendations = async () => {
-    setLoading(true);
-    setError(null);
+  const fetchRecommendations = useCallback(async (isManualRefresh: boolean = false) => {
+    if (!isManualRefresh && hasLoadedBefore && recommendations.length > 0) {
+      setLoading(false);
+      return;
+    }
+
+    if (isManualRefresh) {
+      setLoading(true);
+      setError(null);
+    } else {
+      setLoading(true);
+    }
+
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
@@ -38,7 +50,7 @@ export const HomePage: React.FC = () => {
         return;
       }
 
-      // 3. Formatar histórico para a IA
+      // 3. Formatar histórico para a IA (incluindo filmes rejeitados para evitar repetidos)
       const formattedHistory = historyData.map(item => ({
         title: item.title,
         rating: item.rating,
@@ -46,16 +58,21 @@ export const HomePage: React.FC = () => {
         user_note: item.user_note
       }));
 
-      // 4. Usar OpenRouter (modelo gratuito Mistral)
-      console.log('A chamar OpenRouter com histórico:', formattedHistory);
-      const aiResponse = await openRouterService.getRecommendations(formattedHistory as any);
+      // Adicionar nota sobre filmes rejeitados ao prompt
+      const rejectedTitles = rejectedIds.map(id => {
+        const movie = recommendations.find(m => m.imdbID === id);
+        return movie?.Title;
+      }).filter(Boolean);
+
+      console.log('A chamar OpenRouter...');
+      const aiResponse = await openRouterService.getRecommendations(formattedHistory as any, rejectedTitles as string[]);
       console.log('Resposta da OpenRouter:', aiResponse);
       
       // 5. Cruzar sugestões com OMDb para obter posters e detalhes reais
       const enrichedMovies = await Promise.all(
         aiResponse.recommendations.map(async (rec) => {
           const movieDetails = await omdbService.search(rec.title);
-          const bestMatch = movieDetails[0]; // Pegamos o primeiro resultado da pesquisa
+          const bestMatch = movieDetails[0];
           
           if (bestMatch) {
             return {
@@ -72,18 +89,24 @@ export const HomePage: React.FC = () => {
         })
       );
 
-      setRecommendations(enrichedMovies.filter(m => m !== null) as Movie[]);
+      const filteredMovies = enrichedMovies.filter(m => m !== null && !rejectedIds.includes(m.imdbID)) as Movie[];
+      setRecommendations(filteredMovies);
+      setHasLoadedBefore(true);
     } catch (err: any) {
       console.error('Erro ao gerar recomendações:', err);
       setError('Não conseguimos gerar as tuas recomendações neste momento. Tenta novamente.');
     } finally {
       setLoading(false);
     }
-  };
+  }, [hasLoadedBefore, recommendations.length, rejectedIds, navigate]);
 
   useEffect(() => {
-    fetchRecommendations();
+    fetchRecommendations(false);
   }, []);
+
+  const handleManualRefresh = () => {
+    fetchRecommendations(true);
+  };
 
   const addToWatchlist = async (movie: Movie) => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -132,7 +155,7 @@ export const HomePage: React.FC = () => {
           
           <Button 
             variant="secondary" 
-            onClick={fetchRecommendations} 
+            onClick={handleManualRefresh} 
             isLoading={loading}
             className="rounded-2xl border-white/5 h-fit py-4"
           >
@@ -146,7 +169,7 @@ export const HomePage: React.FC = () => {
         <div className="bg-rose-500/10 border border-rose-500/20 rounded-[2rem] p-12 text-center mb-12">
           <AlertCircle className="w-12 h-12 text-rose-500 mx-auto mb-4" />
           <h3 className="text-xl font-bold text-white mb-2">{error}</h3>
-          <Button variant="outline" onClick={fetchRecommendations}>Tentar Novamente</Button>
+          <Button variant="outline" onClick={handleManualRefresh}>Tentar Novamente</Button>
         </div>
       )}
 
@@ -169,8 +192,14 @@ export const HomePage: React.FC = () => {
               rating={movie.imdbRating}
               aiReason={movie.aiReason}
               onWatchlist={() => addToWatchlist(movie)}
-              onAlreadySeen={() => alert("Fixe! Vou atualizar as tuas recomendações.")}
-              onReject={() => setRecommendations(prev => prev.filter(m => m.imdbID !== movie.imdbID))}
+              onAlreadySeen={() => {
+                setRecommendations(prev => prev.filter(m => m.imdbID !== movie.imdbID));
+                alert("Filme adicionado ao teu histórico! 👍");
+              }}
+              onReject={() => {
+                setRejectedIds(prev => [...prev, movie.imdbID]);
+                setRecommendations(prev => prev.filter(m => m.imdbID !== movie.imdbID));
+              }}
             />
           ))
         )}
