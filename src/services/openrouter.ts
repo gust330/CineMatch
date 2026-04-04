@@ -35,7 +35,7 @@ User's history:
 ${history.map(item => `- ${item.title} (${item.media_type}): Rating ${item.rating}/10`).join('\n')}
 
 Rules:
-1. Recommend only 5 titles NOT in the history above.
+1. Recommend only 4 titles NOT in the history above.
 2. For each, give the original title, type (movie or series), release year, and a brief justification (max 2 sentences).
 3. Respond ONLY in valid JSON:
 {"recommendations": [{"title": "Title", "media_type": "movie", "year": "2024", "ai_reason": "Justification"}]}

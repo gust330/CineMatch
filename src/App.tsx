@@ -4,6 +4,9 @@ import { AuthProvider, useAuth } from './hooks/useAuth';
 import { AuthPage } from './pages/auth/AuthPage';
 import { OnboardingPage } from './pages/onboarding/OnboardingPage';
 import { HomePage } from './pages/HomePage';
+import { WatchlistPage } from './pages/WatchlistPage';
+import { HistoryPage } from './pages/HistoryPage';
+import { ProfilePage } from './pages/ProfilePage';
 
 const PrivateRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, loading } = useAuth();
@@ -28,9 +31,11 @@ function App() {
       <Router>
         <Routes>
           <Route path="/auth" element={<AuthPage />} />
-          {/* Onboarding acessível sempre para adicionar mais filmes */}
           <Route path="/onboarding" element={<OnboardingPage />} />
           <Route path="/" element={<PrivateRoute><HomePage /></PrivateRoute>} />
+          <Route path="/watchlist" element={<PrivateRoute><WatchlistPage /></PrivateRoute>} />
+          <Route path="/history" element={<PrivateRoute><HistoryPage /></PrivateRoute>} />
+          <Route path="/profile" element={<PrivateRoute><ProfilePage /></PrivateRoute>} />
         </Routes>
       </Router>
     </AuthProvider>

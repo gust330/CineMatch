@@ -5,6 +5,7 @@ import {
   Sparkles, 
   Bookmark, 
   History, 
+  User,
   LogOut,
   Search
 } from 'lucide-react';
@@ -18,6 +19,7 @@ export const Navbar: React.FC = () => {
     { to: '/', icon: Sparkles, label: 'Descobrir' },
     { to: '/watchlist', icon: Bookmark, label: 'Watchlist' },
     { to: '/history', icon: History, label: 'Histórico' },
+    { to: '/profile', icon: User, label: 'Perfil' },
   ];
 
   return (
