@@ -11,64 +11,116 @@ import { motion } from 'framer-motion';
 import { cn } from '../utils/cn';
 import type { Movie } from '../types';
 
+const STORAGE_KEYS = {
+  recommendations: 'cinematch_recommendations',
+  rejectedIds: 'cinematch_rejected',
+  seenIds: 'cinematch_seen',
+  timestamp: 'cinematch_cache_time'
+};
+
+const CACHE_DURATION = 30 * 60 * 1000; // 30 minutos
+
 export const HomePage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [recommendations, setRecommendations] = useState<Movie[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [hasLoadedBefore, setHasLoadedBefore] = useState(false);
-  const [rejectedIds, setRejectedIds] = useState<string[]>([]);
   const navigate = useNavigate();
 
+  // Carregar dados do localStorage
+  const loadFromCache = useCallback((): { recommendations: Movie[], rejected: string[], seen: string[] } | null => {
+    try {
+      const cached = localStorage.getItem(STORAGE_KEYS.recommendations);
+      const rejected = localStorage.getItem(STORAGE_KEYS.rejectedIds) || '[]';
+      const seen = localStorage.getItem(STORAGE_KEYS.seenIds) || '[]';
+      const timestamp = localStorage.getItem(STORAGE_KEYS.timestamp);
+      
+      if (cached && timestamp) {
+        const isExpired = Date.now() - parseInt(timestamp) > CACHE_DURATION;
+        if (!isExpired) {
+          return {
+            recommendations: JSON.parse(cached),
+            rejected: JSON.parse(rejected),
+            seen: JSON.parse(seen)
+          };
+        }
+      }
+    } catch (e) {
+      console.error('Erro ao carregar cache:', e);
+    }
+    return null;
+  }, []);
+
+  // Salvar no localStorage
+  const saveToCache = useCallback((recs: Movie[], rejected: string[], seen: string[]) => {
+    try {
+      localStorage.setItem(STORAGE_KEYS.recommendations, JSON.stringify(recs));
+      localStorage.setItem(STORAGE_KEYS.rejectedIds, JSON.stringify(rejected));
+      localStorage.setItem(STORAGE_KEYS.seenIds, JSON.stringify(seen));
+      localStorage.setItem(STORAGE_KEYS.timestamp, Date.now().toString());
+    } catch (e) {
+      console.error('Erro ao guardar cache:', e);
+    }
+  }, []);
+
   const fetchRecommendations = useCallback(async (isManualRefresh: boolean = false) => {
-    if (!isManualRefresh && hasLoadedBefore && recommendations.length > 0) {
-      setLoading(false);
-      return;
+    // Se não é refresh manual e há cache válido, usar cache
+    if (!isManualRefresh) {
+      const cached = loadFromCache();
+      if (cached && cached.recommendations.length > 0) {
+        setRecommendations(cached.recommendations);
+        setLoading(false);
+        return;
+      }
     }
 
-    if (isManualRefresh) {
-      setLoading(true);
-      setError(null);
-    } else {
-      setLoading(true);
-    }
+    setLoading(true);
+    setError(null);
 
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      // 1. Buscar histórico do utilizador
+      // Buscar histórico do utilizador
       const { data: historyData, error: historyError } = await supabase
         .from('watched_items')
-        .select('*')
-        .order('created_at', { ascending: false });
+        .select('title')
+        .eq('user_id', user.id);
 
       if (historyError) throw historyError;
 
-      // 2. Se não houver histórico suficiente, ir para onboarding
       if (!historyData || historyData.length < 3) {
         navigate('/onboarding');
         return;
       }
 
-      // 3. Formatar histórico para a IA (incluindo filmes rejeitados para evitar repetidos)
-      const formattedHistory = historyData.map(item => ({
+      // Buscar filmes rejeitados e vistos do localStorage
+      const rejected = JSON.parse(localStorage.getItem(STORAGE_KEYS.rejectedIds) || '[]');
+      const seen = JSON.parse(localStorage.getItem(STORAGE_KEYS.seenIds) || '[]');
+      
+      // Buscar títulos já vistos na base de dados para evitar
+      const { data: watchedData } = await supabase
+        .from('watched_items')
+        .select('title')
+        .eq('user_id', user.id);
+      
+      const watchedTitles = (watchedData || []).map(w => w.title);
+
+      // Formatar histórico
+      const watchedForAI = (historyData || []).map((item: any) => ({
         title: item.title,
-        rating: item.rating,
-        media_type: item.media_type as 'movie' | 'series',
-        user_note: item.user_note
+        rating: 8, // Default rating para histórico antigo
+        media_type: 'movie' as const,
+        user_note: ''
       }));
 
-      // Adicionar nota sobre filmes rejeitados ao prompt
-      const rejectedTitles = rejectedIds.map(id => {
-        const movie = recommendations.find(m => m.imdbID === id);
-        return movie?.Title;
-      }).filter(Boolean);
-
+      // Adicionar filmes rejeitados e vistos ao prompt
+      const allExcluded = [...rejected, ...seen, ...watchedTitles];
+      
       console.log('A chamar OpenRouter...');
-      const aiResponse = await openRouterService.getRecommendations(formattedHistory as any, rejectedTitles as string[]);
+      const aiResponse = await openRouterService.getRecommendations(watchedForAI, allExcluded);
       console.log('Resposta da OpenRouter:', aiResponse);
       
-      // 5. Cruzar sugestões com OMDb para obter posters e detalhes reais
+      // Cruzar com OMDb
       const enrichedMovies = await Promise.all(
         aiResponse.recommendations.map(async (rec) => {
           const movieDetails = await omdbService.search(rec.title);
@@ -89,16 +141,23 @@ export const HomePage: React.FC = () => {
         })
       );
 
-      const filteredMovies = enrichedMovies.filter(m => m !== null && !rejectedIds.includes(m.imdbID)) as Movie[];
+      // Filtrar duplicados e filmes já vistos/rejeitados
+      const excludedIds = [...rejected, ...seen];
+      const filteredMovies = enrichedMovies.filter(m => 
+        m !== null && !excludedIds.includes(m.imdbID)
+      ) as Movie[];
+
       setRecommendations(filteredMovies);
-      setHasLoadedBefore(true);
+      
+      // Atualizar cache
+      saveToCache(filteredMovies, rejected, seen);
     } catch (err: any) {
       console.error('Erro ao gerar recomendações:', err);
       setError('Não conseguimos gerar as tuas recomendações neste momento. Tenta novamente.');
     } finally {
       setLoading(false);
     }
-  }, [hasLoadedBefore, recommendations.length, rejectedIds, navigate]);
+  }, [loadFromCache, navigate, saveToCache]);
 
   useEffect(() => {
     fetchRecommendations(false);
@@ -123,10 +182,62 @@ export const HomePage: React.FC = () => {
     });
 
     if (!error) {
-      // Remover da lista de recomendações local para dar feedback imediato
-      setRecommendations(prev => prev.filter(m => m.imdbID !== movie.imdbID));
+      // Remover da lista
+      const newRecs = recommendations.filter(m => m.imdbID !== movie.imdbID);
+      setRecommendations(newRecs);
+      
+      // Atualizar cache
+      const rejected = JSON.parse(localStorage.getItem(STORAGE_KEYS.rejectedIds) || '[]');
+      const seen = JSON.parse(localStorage.getItem(STORAGE_KEYS.seenIds) || '[]');
+      saveToCache(newRecs, rejected, seen);
+      
       alert(`${movie.Title} adicionado à tua Watchlist!`);
     }
+  };
+
+  const handleAlreadySeen = async (movie: Movie) => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    // Adicionar ao histórico
+    await supabase.from('watched_items').insert({
+      user_id: user.id,
+      tmdb_id: 0,
+      media_type: movie.Type,
+      title: movie.Title,
+      poster_path: movie.Poster,
+      rating: 8,
+      watched_at: new Date().toISOString()
+    });
+
+    // Guardar ID como visto
+    const seen = JSON.parse(localStorage.getItem(STORAGE_KEYS.seenIds) || '[]');
+    const newSeen = [...seen, movie.imdbID];
+    localStorage.setItem(STORAGE_KEYS.seenIds, JSON.stringify(newSeen));
+
+    // Remover da lista
+    const newRecs = recommendations.filter(m => m.imdbID !== movie.imdbID);
+    setRecommendations(newRecs);
+
+    // Atualizar cache
+    const rejected = JSON.parse(localStorage.getItem(STORAGE_KEYS.rejectedIds) || '[]');
+    saveToCache(newRecs, rejected, newSeen);
+
+    alert("Filme adicionado ao teu histórico! 👍");
+  };
+
+  const handleReject = (movie: Movie) => {
+    const rejected = JSON.parse(localStorage.getItem(STORAGE_KEYS.rejectedIds) || '[]');
+    const newRejected = [...rejected, movie.imdbID];
+    localStorage.setItem(STORAGE_KEYS.rejectedIds, JSON.stringify(newRejected));
+
+    // Remover da lista
+    const newRecs = recommendations.filter(m => m.imdbID !== movie.imdbID);
+    setRecommendations(newRecs);
+
+    // Atualizar cache
+    const seen = JSON.parse(localStorage.getItem(STORAGE_KEYS.seenIds) || '[]');
+    saveToCache(newRecs, newRejected, seen);
   };
 
   return (
@@ -192,14 +303,8 @@ export const HomePage: React.FC = () => {
               rating={movie.imdbRating}
               aiReason={movie.aiReason}
               onWatchlist={() => addToWatchlist(movie)}
-              onAlreadySeen={() => {
-                setRecommendations(prev => prev.filter(m => m.imdbID !== movie.imdbID));
-                alert("Filme adicionado ao teu histórico! 👍");
-              }}
-              onReject={() => {
-                setRejectedIds(prev => [...prev, movie.imdbID]);
-                setRecommendations(prev => prev.filter(m => m.imdbID !== movie.imdbID));
-              }}
+              onAlreadySeen={() => handleAlreadySeen(movie)}
+              onReject={() => handleReject(movie)}
             />
           ))
         )}
