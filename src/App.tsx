@@ -28,7 +28,8 @@ function App() {
       <Router>
         <Routes>
           <Route path="/auth" element={<AuthPage />} />
-          <Route path="/onboarding" element={<PrivateRoute><OnboardingPage /></PrivateRoute>} />
+          {/* Onboarding acessível sempre para adicionar mais filmes */}
+          <Route path="/onboarding" element={<OnboardingPage />} />
           <Route path="/" element={<PrivateRoute><HomePage /></PrivateRoute>} />
         </Routes>
       </Router>

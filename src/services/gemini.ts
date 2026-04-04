@@ -7,8 +7,10 @@ if (!API_KEY) {
 }
 
 const genAI = new GoogleGenerativeAI(API_KEY || '');
+
+// Gemini 2.0 Flash - modelo mais recente
 const model = genAI.getGenerativeModel({ 
-  model: 'gemini-1.5-flash',
+  model: 'gemini-2.0-flash-exp',
   generationConfig: {
     responseMimeType: "application/json",
   }
