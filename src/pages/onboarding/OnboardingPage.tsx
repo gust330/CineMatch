@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '../../lib/supabase';
-import { omdbService, OMDBMovie } from '../../lib/omdb';
+import { supabase } from '../../services/supabase';
+import { omdbService, OMDBMovie } from '../../services/omdb';
 import { Button } from '../../components/Button';
 import { Input } from '../../components/Input';
 import { MovieCard } from '../../components/MovieCard';
