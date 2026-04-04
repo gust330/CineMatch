@@ -3,16 +3,37 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { AuthProvider, useAuth } from './hooks/useAuth';
 import { AuthPage } from './pages/auth/AuthPage';
 import { OnboardingPage } from './pages/onboarding/OnboardingPage';
+import { MainLayout } from './layouts/MainLayout';
 
-// Layout simples para a Home (será expandido)
+// Mock Home Page (Next to be implemented)
 const HomePlaceholder = () => {
-  const { signOut, user } = useAuth();
+  const { user } = useAuth();
   return (
-    <div className="min-h-screen bg-black text-white p-12 flex flex-col items-center justify-center">
-      <h1 className="text-4xl font-black mb-8">Bem-vindo, {user?.email}</h1>
-      <p className="text-zinc-500 mb-8">O motor de IA está pronto para as tuas recomendações.</p>
-      <button onClick={signOut} className="text-rose-500 font-bold hover:underline cursor-pointer">Sair</button>
-    </div>
+    <MainLayout>
+      <header className="mb-12">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-8 h-8 bg-teal-500 rounded-lg flex items-center justify-center shadow-glow">
+            <span className="text-black text-xs font-black">AI</span>
+          </div>
+          <span className="text-[10px] font-black tracking-[0.2em] uppercase text-teal-400">Recomendações para ti</span>
+        </div>
+        <h1 className="text-6xl font-black tracking-tighter mb-4 leading-none">
+          O teu Cinema <span className="text-teal-400">Puro</span>.
+        </h1>
+        <p className="text-zinc-500 text-lg max-w-2xl font-medium">
+          A analisar os teus gostos recentes para sugerir a tua próxima obsessão...
+        </p>
+      </header>
+      
+      {/* Grid Placeholder */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
+        {[1, 2, 3, 4].map(i => (
+          <div key={i} className="aspect-[2/3] rounded-[2rem] bg-zinc-900 animate-pulse border border-white/5 flex flex-col items-center justify-center text-zinc-800">
+            <span className="text-xs font-black uppercase tracking-widest">A carregar...</span>
+          </div>
+        ))}
+      </div>
+    </MainLayout>
   );
 };
 
