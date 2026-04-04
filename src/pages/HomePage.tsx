@@ -47,26 +47,8 @@ export const HomePage: React.FC = () => {
         user_note: item.user_note
       }));
 
-      // 4. Tentar Gemini primeiro, se falhar usar fallback de filmes populares
-      let aiResponse;
-      try {
-        aiResponse = await geminiService.getRecommendations(formattedHistory as any);
-      } catch (geminiError) {
-        console.warn('IA falhou. A usar filmes populares...');
-        // Fallback: buscar filmes populares diretamente
-        const popularMovies = await omdbService.getPopular();
-        setRecommendations(popularMovies.map(m => ({
-          imdbID: m.imdbID,
-          Title: m.Title,
-          Year: m.Year,
-          Type: m.Type,
-          Poster: m.Poster,
-          aiReason: 'Um clássico que não podes perder!',
-          imdbRating: m.imdbRating
-        })));
-        setLoading(false);
-        return;
-      }
+      // 4. Tentar Gemini - sem fallback para forçar ver o erro real
+      const aiResponse = await geminiService.getRecommendations(formattedHistory as any);
       
       // 5. Cruzar sugestões com OMDb para obter posters e detalhes reais
       const enrichedMovies = await Promise.all(

@@ -1,22 +1,12 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleGenerativeAI, SchemaType } from '@google/generative-ai';
 
 const API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
 
 if (!API_KEY) {
-  console.warn('VITE_GEMINI_API_KEY não definida no .env');
+  console.error('VITE_GEMINI_API_KEY não definida no .env');
 }
 
 const genAI = new GoogleGenerativeAI(API_KEY || '');
-
-// Tentar vários modelos até encontrar um que funcione
-const MODEL_NAME = 'gemini-1.5-flash-8b';
-
-const model = genAI.getGenerativeModel({ 
-  model: MODEL_NAME,
-  generationConfig: {
-    responseMimeType: "application/json",
-  }
-});
 
 export interface UserRating {
   title: string;
@@ -31,36 +21,42 @@ export interface RecommendationResponse {
     media_type: 'movie' | 'series';
     year: string;
     ai_reason: string;
-    imdb_id?: string; // Gemini pode tentar prever o ID ou apenas o título
   }>;
 }
 
 export const geminiService = {
   getRecommendations: async (history: UserRating[]): Promise<RecommendationResponse> => {
-    const prompt = `
-      Age como um especialista em cinema e séries. Com base no perfil de gostos do utilizador abaixo, recomenda 5 filmes ou séries que o utilizador provavelmente vai adorar.
-      
-      Histórico do utilizador:
-      ${history.map(item => `- ${item.title} (${item.media_type}): Nota ${item.rating}/10. Nota do utilizador: ${item.note || 'Sem nota'}`).join('\n')}
+    // Vamos experimentar o modelo gemini-2.0-flash com geração forçada de JSON
+    const model = genAI.getGenerativeModel({
+      model: 'gemini-2.0-flash',
+    });
 
-      Regras:
-      1. Recomenda apenas 5 títulos que NÃO estejam no histórico acima.
-      2. Para cada um, dá o título original, o tipo (movie ou series), o ano de lançamento e uma justificação breve (máx 2 frases).
-      3. Responde APENAS em JSON válido com este schema exato:
-      {
-        "recommendations": [
-          { "title": "Título", "media_type": "movie" | "series", "year": "2024", "ai_reason": "Justificação" }
-        ]
-      }
-    `;
+    const prompt = `
+Tu és um especialista em cinema e séries. Com base no histórico de visualização do utilizador, recomenda 5 filmes ou séries.
+
+Histórico:
+${history.map(item => `- ${item.title}: ${item.rating}/10`).join('\n')}
+
+Responde apenas com JSON:
+{"recommendations": [{"title": "...", "media_type": "movie", "year": "...", "ai_reason": "..."}]}
+`;
 
     try {
-      const result = await model.generateContent(prompt);
+      const result = await model.generateContent({
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        generationConfig: {
+          temperature: 0.7,
+          maxOutputTokens: 1000,
+        },
+      });
+      
       const response = await result.response;
       const text = response.text();
+      console.log('Resposta da Gemini:', text);
+      
       return JSON.parse(text) as RecommendationResponse;
-    } catch (error) {
-      console.error('Erro na Gemini API:', error);
+    } catch (error: any) {
+      console.error('Erro na Gemini API:', error.message || error);
       throw error;
     }
   }
