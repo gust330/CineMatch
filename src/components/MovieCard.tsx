@@ -1,7 +1,6 @@
 import React from 'react';
-import { Star, Info, Plus, Check, Play } from 'lucide-react';
+import { Star, Info, Plus, Check } from 'lucide-react';
 import { Button } from './Button';
-import { cn } from '../utils/cn';
 import { motion } from 'framer-motion';
 
 export interface MovieCardProps {

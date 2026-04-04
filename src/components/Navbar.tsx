@@ -5,7 +5,6 @@ import {
   Sparkles, 
   Bookmark, 
   History, 
-  User, 
   LogOut,
   Search
 } from 'lucide-react';

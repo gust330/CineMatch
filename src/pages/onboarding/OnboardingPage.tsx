@@ -1,15 +1,14 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../services/supabase';
-import { omdbService, OMDBMovie } from '../../services/omdb';
+import { omdbService } from '../../services/omdb';
+import type { OMDBMovie } from '../../services/omdb';
 import { Button } from '../../components/Button';
 import { Input } from '../../components/Input';
-import { MovieCard } from '../../components/MovieCard';
-import { motion, AnimatePresence } from 'framer-motion';
 import { Search, ChevronRight, Sparkles, Star } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 
 export const OnboardingPage: React.FC = () => {
-  const [step, setStep] = useState(1);
   const [search, setSearch] = useState('');
   const [searchResults, setSearchResults] = useState<OMDBMovie[]>([]);
   const [selectedItems, setSelectedItems] = useState<{ movie: OMDBMovie, rating: number }[]>([]);
@@ -118,7 +117,7 @@ export const OnboardingPage: React.FC = () => {
 
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-6">
                 <AnimatePresence>
-                  {selectedItems.map((item, idx) => (
+                  {selectedItems.map((item) => (
                     <motion.div
                       key={item.movie.imdbID}
                       initial={{ scale: 0.8, opacity: 0 }}

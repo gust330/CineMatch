@@ -3,7 +3,7 @@ import { supabase } from '../../services/supabase';
 import { Button } from '../../components/Button';
 import { Input } from '../../components/Input';
 import { motion } from 'framer-motion';
-import { Clapperboard, LogIn, Mail, Lock } from 'lucide-react';
+import { Clapperboard, LogIn } from 'lucide-react';
 
 export const AuthPage: React.FC = () => {
   const [isLogin, setIsLogin] = useState(true);
@@ -19,15 +19,26 @@ export const AuthPage: React.FC = () => {
 
     try {
       if (isLogin) {
-        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        const { data, error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
+        if (data.session) {
+          console.log('Login efetuado com sucesso!', data.session);
+          window.location.href = '/'; // Redirecionamento forçado para garantir a atualização do estado
+        }
       } else {
-        const { error } = await supabase.auth.signUp({ email, password });
+        const { error } = await supabase.auth.signUp({ 
+          email, 
+          password,
+          options: {
+            emailRedirectTo: window.location.origin
+          }
+        });
         if (error) throw error;
         alert('Verifique o seu email para confirmar o registo!');
       }
     } catch (err: any) {
-      setError(err.message);
+      console.error('Erro detalhado de Auth:', err);
+      setError(err.message || 'Ocorreu um erro inesperado.');
     } finally {
       setLoading(false);
     }

@@ -7,7 +7,6 @@ import { MainLayout } from './layouts/MainLayout';
 
 // Mock Home Page (Next to be implemented)
 const HomePlaceholder = () => {
-  const { user } = useAuth();
   return (
     <MainLayout>
       <header className="mb-12">
@@ -39,8 +38,19 @@ const HomePlaceholder = () => {
 
 const PrivateRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, loading } = useAuth();
-  if (loading) return <div className="min-h-screen bg-black flex items-center justify-center text-teal-500 font-black animate-pulse">CineMatch...</div>;
-  if (!user) return <Navigate to="/auth" />;
+  
+  if (loading) return (
+    <div className="min-h-screen bg-black flex flex-col items-center justify-center">
+      <div className="w-12 h-12 border-4 border-teal-500/20 border-t-teal-500 rounded-full animate-spin mb-4" />
+      <span className="text-teal-500 font-black animate-pulse uppercase tracking-widest text-xs">CineMatch</span>
+    </div>
+  );
+  
+  if (!user) {
+    console.log("Acesso negado: Redirecionando para /auth");
+    return <Navigate to="/auth" replace />;
+  }
+  
   return <>{children}</>;
 };
 
