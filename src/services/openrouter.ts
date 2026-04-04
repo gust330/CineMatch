@@ -16,65 +16,85 @@ export interface RecommendationResponse {
     media_type: 'movie' | 'series';
     year: string;
     ai_reason: string;
-    imdb_id?: string;
   }>;
 }
 
 export const openRouterService = {
   getRecommendations: async (history: UserRating[]): Promise<RecommendationResponse> => {
+    // Modelos gratuitos conhecidos por funcionar na OpenRouter
+    const models = [
+      'mistralai/mistral-7b-instruct',
+      'meta-llama/llama-3.1-8b-instruct',
+      'google/gemma-2-9b-it'
+    ];
+
     const prompt = `
-Age como um especialista em cinema e séries. Com base no perfil de gostos do utilizador abaixo, recomenda 5 filmes ou séries que o utilizador provavelmente vai adorar.
+You are a movie and series expert. Based on the user's viewing history below, recommend 5 movies or series they will probably love.
 
-Histórico do utilizador:
-${history.map(item => `- ${item.title} (${item.media_type}): Nota ${item.rating}/10. Nota do utilizador: ${item.note || 'Sem nota'}`).join('\n')}
+User's history:
+${history.map(item => `- ${item.title} (${item.media_type}): Rating ${item.rating}/10`).join('\n')}
 
-Regras:
-1. Recomenda apenas 5 títulos que NÃO estejam no histórico acima.
-2. Para cada um, dá o título original, o tipo (movie ou series), o ano de lançamento e uma justificação breve (máx 2 frases).
-3. Responde APENAS em JSON válido com este schema exato:
-{
-  "recommendations": [
-    { "title": "Título", "media_type": "movie" | "series", "year": "2024", "ai_reason": "Justificação" }
-  ]
-}
+Rules:
+1. Recommend only 5 titles NOT in the history above.
+2. For each, give the original title, type (movie or series), release year, and a brief justification (max 2 sentences).
+3. Respond ONLY in valid JSON:
+{"recommendations": [{"title": "Title", "media_type": "movie", "year": "2024", "ai_reason": "Justification"}]}
 `;
 
-    try {
-      const { data } = await axios.post(
-        OPENROUTER_API_URL,
-        {
-          model: 'mistralai/mistral-7b-instruct:free',
-          messages: [
-            {
-              role: 'user',
-              content: prompt
+    // Try each model until one works
+    let lastError = null;
+    
+    for (const modelName of models) {
+      try {
+        console.log(`Tentando modelo: ${modelName}...`);
+        
+        const { data } = await axios.post(
+          OPENROUTER_API_URL,
+          {
+            model: modelName,
+            messages: [
+              {
+                role: 'user',
+                content: prompt
+              }
+            ],
+            max_tokens: 1200,
+            temperature: 0.7
+          },
+          {
+            headers: {
+              'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
+              'Content-Type': 'application/json',
+              'HTTP-Referer': 'https://cinematch.vercel.app',
+              'X-Title': 'CineMatch'
             }
-          ],
-          max_tokens: 1000,
-        },
-        {
-          headers: {
-            'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
-            'Content-Type': 'application/json',
-            'HTTP-Referer': window.location.origin,
-            'X-Title': 'CineMatch'
           }
-        }
-      );
+        );
 
-      const content = data.choices[0].message.content;
-      console.log('Raw OpenRouter response:', content);
-      
-      // Extrair apenas o JSON da resposta (pode vir com markdown)
-      const jsonMatch = content.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) {
-        throw new Error('Resposta inválida da IA - não contém JSON');
+        const content = data.choices[0].message.content;
+        console.log('Resposta do modelo:', content.substring(0, 200) + '...');
+        
+        // Extract JSON from response
+        const jsonMatch = content.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) {
+          throw new Error('Resposta não contém JSON válido');
+        }
+        
+        return JSON.parse(jsonMatch[0]) as RecommendationResponse;
+        
+      } catch (error: any) {
+        console.log(`Modelo ${modelName} falhou:`, error.response?.status, error.message);
+        lastError = error;
+        
+        // Se for 404, continuar para o próximo modelo
+        if (error.response?.status === 404) {
+          continue;
+        }
+        // Se for outro erro,	throw logo
+        throw error;
       }
-      
-      return JSON.parse(jsonMatch[0]) as RecommendationResponse;
-    } catch (error: any) {
-      console.error('Erro na OpenRouter API:', error?.response?.data || error.message);
-      throw error;
     }
+    
+    throw lastError || new Error('Nenhum modelo disponível');
   }
 };
