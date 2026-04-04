@@ -160,8 +160,23 @@ export const HomePage: React.FC = () => {
   }, [loadFromCache, navigate, saveToCache]);
 
   useEffect(() => {
-    fetchRecommendations(false);
+    const init = async () => {
+      await fetchRecommendations(false);
+    };
+    init();
   }, []);
+
+  // Garantir 4 recomendações quando necessário
+  useEffect(() => {
+    const fillRecommendations = async () => {
+      if (!loading && recommendations.length > 0 && recommendations.length < 4) {
+        await ensureFourRecommendations();
+      }
+    };
+    // Delay para evitar loop
+    const timer = setTimeout(fillRecommendations, 1000);
+    return () => clearTimeout(timer);
+  }, [recommendations.length]);
 
   const handleManualRefresh = () => {
     fetchRecommendations(true);
@@ -226,23 +241,142 @@ export const HomePage: React.FC = () => {
     alert("Filme adicionado ao teu histórico! 👍");
   };
 
-  const handleReject = (movie: Movie) => {
+  const handleReject = async (movie: Movie) => {
     const rejected = JSON.parse(localStorage.getItem(STORAGE_KEYS.rejectedIds) || '[]');
     const newRejected = [...rejected, movie.imdbID];
     localStorage.setItem(STORAGE_KEYS.rejectedIds, JSON.stringify(newRejected));
 
-    // Remover da lista APENAS - não substituir automaticamente
-    const newRecs = recommendations.filter(m => m.imdbID !== movie.imdbID);
-    setRecommendations(newRecs);
+    // Remover o filme rejeitado
+    const currentRecs = recommendations.filter(m => m.imdbID !== movie.imdbID);
+    
+    // Se tiver menos de 4, buscar novos
+    if (currentRecs.length < 4) {
+      setLoading(true);
+      
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+
+        // Buscar todos os títulos a excluir
+        const { data: watchedData } = await supabase.from('watched_items').select('title').eq('user_id', user.id);
+        const watchedTitles = (watchedData || []).map(w => w.title);
+        const allExcluded = [...newRejected, ...watchedTitles];
+
+        // Buscar dados do histórico para o prompt
+        const { data: historyData } = await supabase
+          .from('watched_items')
+          .select('title, rating')
+          .eq('user_id', user.id)
+          .limit(5);
+
+        const historyForAI = (historyData || []).map((item: any) => ({
+          title: item.title,
+          rating: item.rating || 8,
+          media_type: 'movie' as const,
+          user_note: ''
+        }));
+
+        // Pedir apenas 1 novo filme para substituir o rejeitado
+        const newRecs = await openRouterService.getRecommendations(historyForAI, allExcluded);
+        
+        // Buscar detalhes do novo filme na OMDb
+        if (newRecs.recommendations.length > 0) {
+          const rec = newRecs.recommendations[0];
+          const movieDetails = await omdbService.search(rec.title);
+          const bestMatch = movieDetails[0];
+          
+          if (bestMatch) {
+            const newMovie: Movie = {
+              imdbID: bestMatch.imdbID,
+              Title: bestMatch.Title,
+              Year: rec.year,
+              Type: rec.media_type,
+              Poster: bestMatch.Poster,
+              aiReason: rec.ai_reason,
+              imdbRating: bestMatch.imdbRating
+            };
+            
+            // Adicionar o novo filme à lista
+            setRecommendations([...currentRecs, newMovie]);
+          }
+        }
+      } catch (err) {
+        console.error('Erro ao buscar substituição:', err);
+        setRecommendations(currentRecs);
+      } finally {
+        setLoading(false);
+      }
+    } else {
+      setRecommendations(currentRecs);
+    }
 
     // Atualizar cache
     const seen = JSON.parse(localStorage.getItem(STORAGE_KEYS.seenIds) || '[]');
-    saveToCache(newRecs, newRejected, seen);
+    saveToCache(recommendations, newRejected, seen);
   };
 
-  const handleGetMore = () => {
-    // Chamar novas recomendações manuais
-    fetchRecommendations(true);
+  const ensureFourRecommendations = async () => {
+    if (recommendations.length >= 4) return;
+    
+    setLoading(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data: historyData } = await supabase
+        .from('watched_items')
+        .select('title, rating')
+        .eq('user_id', user.id)
+        .limit(5);
+
+      // const rejected = JSON.parse(localStorage.getItem(STORAGE_KEYS.rejectedIds) || '[]');
+      const seen = JSON.parse(localStorage.getItem(STORAGE_KEYS.seenIds) || '[]');
+      
+      const historyForAI = (historyData || []).map((item: any) => ({
+        title: item.title,
+        rating: item.rating || 8,
+        media_type: 'movie' as const,
+        user_note: ''
+      }));
+
+      const needed = 4 - recommendations.length;
+      let newRecs = recommendations;
+
+      for (let i = 0; i < needed; i++) {
+        const { data: watchedData } = await supabase.from('watched_items').select('title').eq('user_id', user.id);
+        const watchedTitles = (watchedData || []).map(w => w.title);
+        
+        const currentRejected = JSON.parse(localStorage.getItem(STORAGE_KEYS.rejectedIds) || '[]');
+        const allExcluded = [...currentRejected, ...seen, ...watchedTitles];
+
+        const response = await openRouterService.getRecommendations(historyForAI, allExcluded);
+        
+        if (response.recommendations.length > 0) {
+          const rec = response.recommendations[0];
+          const movieDetails = await omdbService.search(rec.title);
+          const bestMatch = movieDetails[0];
+          
+          if (bestMatch) {
+            const newMovie: Movie = {
+              imdbID: bestMatch.imdbID,
+              Title: bestMatch.Title,
+              Year: rec.year,
+              Type: rec.media_type,
+              Poster: bestMatch.Poster,
+              aiReason: rec.ai_reason,
+              imdbRating: bestMatch.imdbRating
+            };
+            newRecs = [...newRecs, newMovie];
+          }
+        }
+      }
+
+      setRecommendations(newRecs);
+    } catch (err) {
+      console.error('Erro ao garantir 4 recomendações:', err);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -320,7 +454,7 @@ export const HomePage: React.FC = () => {
         <div className="mt-12 text-center">
           <Button 
             variant="outline" 
-            onClick={handleGetMore}
+            onClick={() => fetchRecommendations(true)}
             className="rounded-full px-8"
           >
             <RefreshCcw className="mr-2 h-4 w-4" />
