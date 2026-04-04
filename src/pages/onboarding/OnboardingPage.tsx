@@ -7,6 +7,7 @@ import { Button } from '../../components/Button';
 import { Input } from '../../components/Input';
 import { Search, ChevronRight, Sparkles, Star } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { cn } from '../../utils/cn';
 
 export const OnboardingPage: React.FC = () => {
   const [search, setSearch] = useState('');
@@ -45,16 +46,17 @@ export const OnboardingPage: React.FC = () => {
   };
 
   const handleSelectItem = (movie: OMDBMovie) => {
-    console.log("Tentando selecionar filme:", movie.Title);
-    if (selectedItems.find(i => i.movie.imdbID === movie.imdbID)) {
-      console.log("Filme já selecionado.");
-      return;
-    }
-    const newItems = [...selectedItems, { movie, rating: 8 }];
-    setSelectedItems(newItems);
-    console.log("Selecionados agora:", newItems.length);
+    if (selectedItems.find(i => i.movie.imdbID === movie.imdbID)) return;
+    // Iniciamos com nota 10 (Adorei) por defeito, mas permitimos mudar
+    setSelectedItems([...selectedItems, { movie, rating: 10 }]);
     setSearch('');
     setSearchResults([]);
+  };
+
+  const updateRating = (imdbID: string, newRating: number) => {
+    setSelectedItems(prev => prev.map(item => 
+      item.movie.imdbID === imdbID ? { ...item, rating: newRating } : item
+    ));
   };
 
   const handleComplete = async () => {
@@ -153,14 +155,34 @@ export const OnboardingPage: React.FC = () => {
                     >
                       <div className="aspect-[2/3] rounded-2xl overflow-hidden border border-white/10 group-hover:border-teal-500/50 transition-colors">
                         <img src={item.movie.Poster} className="w-full h-full object-cover" alt="" />
-                        <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity p-4">
-                           <div className="flex gap-1 mb-2">
-                             {[1,2,3,4,5].map(star => (
-                               <Star key={star} className="w-4 h-4 text-yellow-500 fill-current" />
+                        <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity p-4">
+                           <div className="flex gap-1 mb-4 bg-black/40 p-2 rounded-xl border border-white/5 backdrop-blur-sm">
+                             {[2, 4, 6, 8, 10].map(starValue => (
+                               <button
+                                 key={starValue}
+                                 onClick={(e) => {
+                                   e.stopPropagation();
+                                   updateRating(item.movie.imdbID, starValue);
+                                 }}
+                                 className="transition-transform active:scale-125"
+                               >
+                                 <Star 
+                                   className={cn(
+                                     "w-5 h-5", 
+                                     item.rating >= starValue ? "text-yellow-500 fill-current" : "text-white/20"
+                                   )} 
+                                 />
+                               </button>
                              ))}
                            </div>
+                           <p className="text-[10px] font-black uppercase text-white mb-4 tracking-widest bg-teal-500 px-2 py-0.5 rounded">
+                             Nota: {item.rating}/10
+                           </p>
                            <button 
-                            onClick={() => setSelectedItems(selectedItems.filter(i => i.movie.imdbID !== item.movie.imdbID))}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedItems(selectedItems.filter(i => i.movie.imdbID !== item.movie.imdbID));
+                            }}
                             className="text-[10px] uppercase font-black text-rose-500 hover:text-rose-400"
                            >
                             Remover
