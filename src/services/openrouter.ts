@@ -63,7 +63,15 @@ Regras:
       );
 
       const content = data.choices[0].message.content;
-      return JSON.parse(content) as RecommendationResponse;
+      console.log('Raw OpenRouter response:', content);
+      
+      // Extrair apenas o JSON da resposta (pode vir com markdown)
+      const jsonMatch = content.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        throw new Error('Resposta inválida da IA - não contém JSON');
+      }
+      
+      return JSON.parse(jsonMatch[0]) as RecommendationResponse;
     } catch (error: any) {
       console.error('Erro na OpenRouter API:', error?.response?.data || error.message);
       throw error;

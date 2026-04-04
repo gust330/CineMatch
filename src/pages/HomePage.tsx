@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../services/supabase';
-import { geminiService } from '../services/gemini';
 import { openRouterService } from '../services/openrouter';
 import { omdbService } from '../services/omdb';
 import { MainLayout } from '../layouts/MainLayout';
@@ -47,8 +46,10 @@ export const HomePage: React.FC = () => {
         user_note: item.user_note
       }));
 
-      // 4. Tentar Gemini - sem fallback para forçar ver o erro real
-      const aiResponse = await geminiService.getRecommendations(formattedHistory as any);
+      // 4. Usar OpenRouter (modelo gratuito Mistral)
+      console.log('A chamar OpenRouter com histórico:', formattedHistory);
+      const aiResponse = await openRouterService.getRecommendations(formattedHistory as any);
+      console.log('Resposta da OpenRouter:', aiResponse);
       
       // 5. Cruzar sugestões com OMDb para obter posters e detalhes reais
       const enrichedMovies = await Promise.all(
