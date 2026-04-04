@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../services/supabase';
 import { omdbService } from '../../services/omdb';
@@ -15,18 +15,44 @@ export const OnboardingPage: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
-  const handleSearch = async (e: React.FormEvent) => {
-    e.preventDefault();
+  useEffect(() => {
+    const checkHistory = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data } = await supabase.from('watched_items').select('id').limit(1);
+        if (data && data.length > 0) {
+          // Se já tem histórico, não devia estar aqui, mas deixamos o utilizador adicionar mais se quiser
+          console.log("Utilizador já tem histórico.");
+        }
+      }
+    };
+    checkHistory();
+  }, [navigate]);
+
+  const handleSearch = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
     if (search.length < 2) return;
     setLoading(true);
-    const results = await omdbService.search(search);
-    setSearchResults(results);
-    setLoading(false);
+    try {
+      console.log("Pesquisando por:", search);
+      const results = await omdbService.search(search);
+      setSearchResults(results);
+    } catch (err) {
+      console.error("Erro na pesquisa:", err);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleSelectItem = (movie: OMDBMovie) => {
-    if (selectedItems.find(i => i.movie.imdbID === movie.imdbID)) return;
-    setSelectedItems([...selectedItems, { movie, rating: 8 }]); // Default rating 8
+    console.log("Tentando selecionar filme:", movie.Title);
+    if (selectedItems.find(i => i.movie.imdbID === movie.imdbID)) {
+      console.log("Filme já selecionado.");
+      return;
+    }
+    const newItems = [...selectedItems, { movie, rating: 8 }];
+    setSelectedItems(newItems);
+    console.log("Selecionados agora:", newItems.length);
     setSearch('');
     setSearchResults([]);
   };

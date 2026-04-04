@@ -8,7 +8,8 @@ import { Button } from '../components/Button';
 import { useNavigate } from 'react-router-dom';
 import { Sparkles, RefreshCcw, AlertCircle, Bookmark } from 'lucide-react';
 import { motion } from 'framer-motion';
-import type { Movie, UserRating } from '../types';
+import { cn } from '../utils/cn';
+import type { Movie } from '../types';
 
 export const HomePage: React.FC = () => {
   const [loading, setLoading] = useState(true);
@@ -37,8 +38,8 @@ export const HomePage: React.FC = () => {
         return;
       }
 
-      // 3. Formatar histórico para a Gemini
-      const formattedHistory: UserRating[] = historyData.map(item => ({
+      // 3. Formatar histórico para a Gemini (Interface Simplificada)
+      const formattedHistory = historyData.map(item => ({
         title: item.title,
         rating: item.rating,
         media_type: item.media_type as 'movie' | 'series',
@@ -46,7 +47,7 @@ export const HomePage: React.FC = () => {
       }));
 
       // 4. Chamar Gemini para recomendações
-      const aiResponse = await geminiService.getRecommendations(formattedHistory);
+      const aiResponse = await geminiService.getRecommendations(formattedHistory as any);
       
       // 5. Cruzar sugestões com OMDb para obter posters e detalhes reais
       const enrichedMovies = await Promise.all(
