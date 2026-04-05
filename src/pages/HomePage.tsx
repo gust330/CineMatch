@@ -159,7 +159,7 @@ export const HomePage: React.FC = () => {
     fetchInitialRecommendations();
   }, []);
 
-  // Rejeitar filme - substituir apenas esse
+  // Rejeitar filme - substituir sempre
   const handleReject = async (movie: Movie) => {
     // Guardar ID rejeitado
     const rejected = JSON.parse(localStorage.getItem('cinematch_rejected') || '[]');
@@ -169,20 +169,18 @@ export const HomePage: React.FC = () => {
     // Remover da lista
     const newRecs = recommendations.filter(m => m.imdbID !== movie.imdbID);
     
-    // Buscar 1 substituição
-    const replacement = await fetchOneReplacement(rejected);
+    // Buscar 1 substituição IMEDIATAMENTE
+    setRecommendations(newRecs);
     
-    if (replacement && newRecs.length < 4) {
-      setRecommendations([...newRecs, replacement]);
-    } else {
-      setRecommendations(newRecs);
+    const seen = JSON.parse(localStorage.getItem('cinematch_seen') || '[]');
+    const replacement = await fetchOneReplacement([...rejected, ...seen]);
+    
+    if (replacement) {
+      setRecommendations(prev => [...prev, replacement]);
     }
-
-    // Atualizar cache
-    localStorage.setItem(CACHE_KEY, JSON.stringify({ movies: newRecs, timestamp: Date.now() }));
   };
 
-  // Já vi - substituir apenas esse
+  // Já vi - substituir sempre
   const handleAlreadySeen = async (movie: Movie) => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
@@ -203,23 +201,22 @@ export const HomePage: React.FC = () => {
     seen.push(movie.imdbID);
     localStorage.setItem('cinematch_seen', JSON.stringify(seen));
 
-    // Remover da lista
+    // Remover IMEDIATAMENTE
     const newRecs = recommendations.filter(m => m.imdbID !== movie.imdbID);
+    setRecommendations(newRecs);
     
     // Buscar 1 substituição
     const rejected = JSON.parse(localStorage.getItem('cinematch_rejected') || '[]');
     const replacement = await fetchOneReplacement([...rejected, ...seen]);
     
-    if (replacement && newRecs.length < 4) {
-      setRecommendations([...newRecs, replacement]);
-    } else {
-      setRecommendations(newRecs);
+    if (replacement) {
+      setRecommendations(prev => [...prev, replacement]);
     }
 
     alert('Adicionado ao teu histórico! 👍');
   };
 
-  // Adicionar à watchlist
+  // Adicionar à watchlist - substituir sempre
   const handleWatchlist = async (movie: Movie) => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
@@ -234,16 +231,17 @@ export const HomePage: React.FC = () => {
       status: 'pending'
     });
 
-    // Remover da lista e substituir
+    // Remover IMEDIATAMENTE
     const newRecs = recommendations.filter(m => m.imdbID !== movie.imdbID);
+    setRecommendations(newRecs);
+    
+    // Buscar 1 substituição
     const rejected = JSON.parse(localStorage.getItem('cinematch_rejected') || '[]');
     const seen = JSON.parse(localStorage.getItem('cinematch_seen') || '[]');
     const replacement = await fetchOneReplacement([...rejected, ...seen]);
     
-    if (replacement && newRecs.length < 4) {
-      setRecommendations([...newRecs, replacement]);
-    } else {
-      setRecommendations(newRecs);
+    if (replacement) {
+      setRecommendations(prev => [...prev, replacement]);
     }
 
     alert(`${movie.Title} adicionado à Watchlist!`);
