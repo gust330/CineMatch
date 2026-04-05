@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { supabase } from '../../services/supabase';
 import { Button } from '../../components/Button';
 import { Input } from '../../components/Input';
+import { useToast } from '../../components/Toast';
 import { motion } from 'framer-motion';
 import { Clapperboard, LogIn } from 'lucide-react';
 
@@ -11,6 +12,7 @@ export const AuthPage: React.FC = () => {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { showToast } = useToast();
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -34,7 +36,7 @@ export const AuthPage: React.FC = () => {
           }
         });
         if (error) throw error;
-        alert('Verifique o seu email para confirmar o registo!');
+        showToast('Verifique o seu email para confirmar o registo!', 'info');
       }
     } catch (err: any) {
       console.error('Erro detalhado de Auth:', err);

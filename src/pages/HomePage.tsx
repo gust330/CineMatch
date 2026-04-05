@@ -5,24 +5,50 @@ import { omdbService } from '../services/omdb';
 import { MainLayout } from '../layouts/MainLayout';
 import { MovieCard } from '../components/MovieCard';
 import { Button } from '../components/Button';
+import { RatingModal } from '../components/RatingModal';
 import { useNavigate } from 'react-router-dom';
 import { Sparkles, RefreshCcw, AlertCircle, Bookmark } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { cn } from '../utils/cn';
+import { useToast } from '../components/Toast';
 import type { Movie } from '../types';
 
 const CACHE_KEY = 'cinematch_recs';
-const CACHE_DURATION = 60 * 60 * 1000; // 1 hora
+const CACHE_DURATION = 60 * 60 * 1000;
+
+const getAllExcludedTitles = async (): Promise<string[]> => {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return [];
+  
+  const [watched, watchlist, rejected] = await Promise.all([
+    supabase.from('watched_items').select('title').eq('user_id', user.id),
+    supabase.from('watchlist_items').select('title').eq('user_id', user.id),
+    supabase.from('rejected_suggestions').select('title').eq('user_id', user.id)
+  ]);
+  
+  const watchedTitles = (watched.data || []).map((w: any) => w.title);
+  const watchlistTitles = (watchlist.data || []).map((w: any) => w.title);
+  const rejectedTitles = (rejected.data || []).map((r: any) => r.title);
+  
+  return [...new Set([...watchedTitles, ...watchlistTitles, ...rejectedTitles])];
+};
+
+const getAllExcludedIds = async (): Promise<string[]> => {
+  const rejected = JSON.parse(localStorage.getItem('cinematch_rejected') || '[]');
+  const seen = JSON.parse(localStorage.getItem('cinematch_seen') || '[]');
+  return [...new Set([...rejected, ...seen])];
+};
 
 export const HomePage: React.FC = () => {
   const [recommendations, setRecommendations] = useState<Movie[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [ratingModalMovie, setRatingModalMovie] = useState<Movie | null>(null);
   const navigate = useNavigate();
+  const { showToast } = useToast();
 
-  // Buscar 1 filme novo para substituir
-  const fetchOneReplacement = async (excludeIds: string[]): Promise<Movie | null> => {
+  const fetchOneReplacement = async (currentRecs: Movie[]): Promise<Movie | null> => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return null;
@@ -33,6 +59,12 @@ export const HomePage: React.FC = () => {
         .eq('user_id', user.id)
         .limit(5);
 
+      const excludedIds = await getAllExcludedIds();
+      const excludedTitles = await getAllExcludedTitles();
+      const currentTitles = currentRecs.map(r => r.Title);
+      const allExcludedTitles = [...new Set([...excludedTitles, ...currentTitles])];
+      const allExcludedIds = [...new Set([...excludedIds, ...currentRecs.map(r => r.imdbID)])];
+
       const historyForAI = (history || []).map((item: any) => ({
         title: item.title,
         rating: item.rating || 8,
@@ -40,21 +72,26 @@ export const HomePage: React.FC = () => {
         user_note: ''
       }));
 
-      const response = await openRouterService.getRecommendations(historyForAI, excludeIds);
-      
-      if (response.recommendations.length > 0) {
-        const rec = response.recommendations[0];
-        const details = await omdbService.search(rec.title);
-        if (details[0]) {
-          return {
-            imdbID: details[0].imdbID,
-            Title: details[0].Title,
-            Year: rec.year,
-            Type: rec.media_type,
-            Poster: details[0].Poster,
-            aiReason: rec.ai_reason,
-            imdbRating: details[0].imdbRating
-          };
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const response = await openRouterService.getRecommendations(historyForAI, allExcludedTitles);
+        
+        if (response.recommendations.length > 0) {
+          for (const rec of response.recommendations) {
+            const details = await omdbService.search(rec.title);
+            if (details[0]) {
+              if (!allExcludedIds.includes(details[0].imdbID) && !allExcludedTitles.includes(details[0].Title)) {
+                return {
+                  imdbID: details[0].imdbID,
+                  Title: details[0].Title,
+                  Year: rec.year,
+                  Type: rec.media_type,
+                  Poster: details[0].Poster,
+                  aiReason: rec.ai_reason,
+                  imdbRating: details[0].imdbRating
+                };
+              }
+            }
+          }
         }
       }
     } catch (err) {
@@ -63,7 +100,6 @@ export const HomePage: React.FC = () => {
     return null;
   };
 
-  // Buscar 4 recomendações iniciais
   const fetchInitialRecommendations = async (isManual: boolean = false) => {
     if (isManual) {
       setRefreshing(true);
@@ -72,16 +108,24 @@ export const HomePage: React.FC = () => {
     }
     setError(null);
 
-    // Verificar cache se não for manual
+    const excludedIds = await getAllExcludedIds();
+    const excludedTitles = await getAllExcludedTitles();
+
     if (!isManual) {
       const cached = localStorage.getItem(CACHE_KEY);
+      
       if (cached) {
         try {
           const { movies, timestamp } = JSON.parse(cached);
-          if (Date.now() - timestamp < CACHE_DURATION && movies.length >= 4) {
-            setRecommendations(movies);
-            setLoading(false);
-            return;
+          if (Date.now() - timestamp < CACHE_DURATION) {
+            const filteredMovies = movies.filter((m: Movie) => 
+              !excludedIds.includes(m.imdbID) && !excludedTitles.includes(m.Title)
+            );
+            if (filteredMovies.length >= 4) {
+              setRecommendations(filteredMovies.slice(0, 4));
+              setLoading(false);
+              return;
+            }
           }
         } catch (e) {}
       }
@@ -101,18 +145,6 @@ export const HomePage: React.FC = () => {
         return;
       }
 
-      // Buscar títulos a excluir
-      const excludeIds: string[] = [];
-      
-      // Adicionar títulos do histórico
-      const watchedTitles = history.map((h: any) => h.title);
-
-      // Adicionar do cache de rejeitados/vistos
-      const rejectedCache = localStorage.getItem('cinematch_rejected');
-      const seenCache = localStorage.getItem('cinematch_seen');
-      const rejectedIds = rejectedCache ? JSON.parse(rejectedCache) : [];
-      const seenIds = seenCache ? JSON.parse(seenCache) : [];
-
       const historyForAI = history.map((item: any) => ({
         title: item.title,
         rating: item.rating || 8,
@@ -120,23 +152,27 @@ export const HomePage: React.FC = () => {
         user_note: ''
       }));
 
-      const response = await openRouterService.getRecommendations(historyForAI, [...watchedTitles, ...rejectedIds, ...seenIds]);
+      const response = await openRouterService.getRecommendations(historyForAI, excludedTitles);
       
       const newMovies: Movie[] = [];
+      const usedIds: string[] = [];
+      
       for (const rec of response.recommendations.slice(0, 4)) {
         const details = await omdbService.search(rec.title);
-        if (details[0] && !excludeIds.includes(details[0].imdbID)) {
-          const movie: Movie = {
-            imdbID: details[0].imdbID,
-            Title: details[0].Title,
-            Year: rec.year,
-            Type: rec.media_type,
-            Poster: details[0].Poster,
-            aiReason: rec.ai_reason,
-            imdbRating: details[0].imdbRating
-          };
-          newMovies.push(movie);
-          excludeIds.push(details[0].imdbID);
+        if (details[0] && !usedIds.includes(details[0].imdbID)) {
+          if (!excludedIds.includes(details[0].imdbID) && !excludedTitles.includes(details[0].Title)) {
+            const movie: Movie = {
+              imdbID: details[0].imdbID,
+              Title: details[0].Title,
+              Year: rec.year,
+              Type: rec.media_type,
+              Poster: details[0].Poster,
+              aiReason: rec.ai_reason,
+              imdbRating: details[0].imdbRating
+            };
+            newMovies.push(movie);
+            usedIds.push(details[0].imdbID);
+          }
         }
       }
 
@@ -159,92 +195,174 @@ export const HomePage: React.FC = () => {
     fetchInitialRecommendations();
   }, []);
 
-  // Rejeitar filme - substituir sempre
   const handleReject = async (movie: Movie) => {
-    // Guardar ID rejeitado
-    const rejected = JSON.parse(localStorage.getItem('cinematch_rejected') || '[]');
-    rejected.push(movie.imdbID);
-    localStorage.setItem('cinematch_rejected', JSON.stringify(rejected));
-
-    // Remover da lista
-    const newRecs = recommendations.filter(m => m.imdbID !== movie.imdbID);
-    
-    // Buscar 1 substituição IMEDIATAMENTE
-    setRecommendations(newRecs);
-    
-    const seen = JSON.parse(localStorage.getItem('cinematch_seen') || '[]');
-    const replacement = await fetchOneReplacement([...rejected, ...seen]);
-    
-    if (replacement) {
-      setRecommendations(prev => [...prev, replacement]);
-    }
-  };
-
-  // Já vi - substituir sempre
-  const handleAlreadySeen = async (movie: Movie) => {
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+    
+    if (user) {
+      const { data: existing } = await supabase
+        .from('rejected_suggestions')
+        .select('id')
+        .eq('user_id', user.id)
+        .eq('title', movie.Title)
+        .single();
 
-    // Adicionar ao histórico
-    await supabase.from('watched_items').insert({
-      user_id: user.id,
-      tmdb_id: 0,
-      media_type: movie.Type,
-      title: movie.Title,
-      poster_path: movie.Poster,
-      rating: 8,
-      watched_at: new Date().toISOString()
-    });
+      if (!existing) {
+        await supabase.from('rejected_suggestions').insert({
+          user_id: user.id,
+          tmdb_id: 0,
+          title: movie.Title,
+          rejected_at: new Date().toISOString()
+        });
+      }
+    }
 
-    // Guardar ID visto
-    const seen = JSON.parse(localStorage.getItem('cinematch_seen') || '[]');
-    seen.push(movie.imdbID);
-    localStorage.setItem('cinematch_seen', JSON.stringify(seen));
+    const rejected = JSON.parse(localStorage.getItem('cinematch_rejected') || '[]');
+    if (!rejected.includes(movie.imdbID)) {
+      rejected.push(movie.imdbID);
+      localStorage.setItem('cinematch_rejected', JSON.stringify(rejected));
+    }
 
-    // Remover IMEDIATAMENTE
     const newRecs = recommendations.filter(m => m.imdbID !== movie.imdbID);
     setRecommendations(newRecs);
     
-    // Buscar 1 substituição
-    const rejected = JSON.parse(localStorage.getItem('cinematch_rejected') || '[]');
-    const replacement = await fetchOneReplacement([...rejected, ...seen]);
+    const replacement = await fetchOneReplacement(newRecs);
+    
+    if (replacement) {
+      setRecommendations(prev => [...prev, replacement]);
+    }
+  };
+
+  const handleAlreadySeen = (movie: Movie) => {
+    setRatingModalMovie(movie);
+  };
+
+  const handleRateAndAdd = async (rating: number) => {
+    if (!ratingModalMovie) return;
+
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      const { data: existing } = await supabase
+        .from('watched_items')
+        .select('id')
+        .eq('user_id', user.id)
+        .eq('title', ratingModalMovie.Title)
+        .single();
+
+      if (!existing) {
+        await supabase.from('watched_items').insert({
+          user_id: user.id,
+          tmdb_id: 0,
+          media_type: ratingModalMovie.Type,
+          title: ratingModalMovie.Title,
+          poster_path: ratingModalMovie.Poster,
+          rating: rating * 2,
+          watched_at: new Date().toISOString()
+        });
+      }
+    }
+
+    const seen = JSON.parse(localStorage.getItem('cinematch_seen') || '[]');
+    if (!seen.includes(ratingModalMovie.imdbID)) {
+      seen.push(ratingModalMovie.imdbID);
+      localStorage.setItem('cinematch_seen', JSON.stringify(seen));
+    }
+
+    const newRecs = recommendations.filter(m => m.imdbID !== ratingModalMovie.imdbID);
+    setRecommendations(newRecs);
+    
+    const replacement = await fetchOneReplacement(newRecs);
     
     if (replacement) {
       setRecommendations(prev => [...prev, replacement]);
     }
 
-    alert('Adicionado ao teu histórico! 👍');
+    setRatingModalMovie(null);
+    showToast('Adicionado ao teu histórico!');
   };
 
-  // Adicionar à watchlist - substituir sempre
+  const handleSkipRating = async () => {
+    if (!ratingModalMovie) return;
+
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      const { data: existing } = await supabase
+        .from('watched_items')
+        .select('id')
+        .eq('user_id', user.id)
+        .eq('title', ratingModalMovie.Title)
+        .single();
+
+      if (!existing) {
+        await supabase.from('watched_items').insert({
+          user_id: user.id,
+          tmdb_id: 0,
+          media_type: ratingModalMovie.Type,
+          title: ratingModalMovie.Title,
+          poster_path: ratingModalMovie.Poster,
+          rating: 8,
+          watched_at: new Date().toISOString()
+        });
+      }
+    }
+
+    const seen = JSON.parse(localStorage.getItem('cinematch_seen') || '[]');
+    if (!seen.includes(ratingModalMovie.imdbID)) {
+      seen.push(ratingModalMovie.imdbID);
+      localStorage.setItem('cinematch_seen', JSON.stringify(seen));
+    }
+
+    const newRecs = recommendations.filter(m => m.imdbID !== ratingModalMovie.imdbID);
+    setRecommendations(newRecs);
+    
+    const replacement = await fetchOneReplacement(newRecs);
+    
+    if (replacement) {
+      setRecommendations(prev => [...prev, replacement]);
+    }
+
+    setRatingModalMovie(null);
+    showToast('Adicionado ao teu histórico!');
+  };
+
   const handleWatchlist = async (movie: Movie) => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    await supabase.from('watchlist_items').insert({
-      user_id: user.id,
-      tmdb_id: 0,
-      media_type: movie.Type,
-      title: movie.Title,
-      poster_path: movie.Poster,
-      ai_reason: movie.aiReason,
-      status: 'pending'
-    });
+    const { data: existing } = await supabase
+      .from('watchlist_items')
+      .select('id')
+      .eq('user_id', user.id)
+      .eq('title', movie.Title)
+      .single();
 
-    // Remover IMEDIATAMENTE
+    if (!existing) {
+      await supabase.from('watchlist_items').insert({
+        user_id: user.id,
+        tmdb_id: 0,
+        media_type: movie.Type,
+        title: movie.Title,
+        poster_path: movie.Poster,
+        ai_reason: movie.aiReason,
+        status: 'pending'
+      });
+    }
+
+    const seen = JSON.parse(localStorage.getItem('cinematch_seen') || '[]');
+    if (!seen.includes(movie.imdbID)) {
+      seen.push(movie.imdbID);
+      localStorage.setItem('cinematch_seen', JSON.stringify(seen));
+    }
+
     const newRecs = recommendations.filter(m => m.imdbID !== movie.imdbID);
     setRecommendations(newRecs);
     
-    // Buscar 1 substituição
-    const rejected = JSON.parse(localStorage.getItem('cinematch_rejected') || '[]');
-    const seen = JSON.parse(localStorage.getItem('cinematch_seen') || '[]');
-    const replacement = await fetchOneReplacement([...rejected, ...seen]);
+    const replacement = await fetchOneReplacement(newRecs);
     
     if (replacement) {
       setRecommendations(prev => [...prev, replacement]);
     }
 
-    alert(`${movie.Title} adicionado à Watchlist!`);
+    showToast(`${movie.Title} adicionado à Watchlist!`);
   };
 
   return (
@@ -273,7 +391,10 @@ export const HomePage: React.FC = () => {
           
           <Button 
             variant="secondary" 
-            onClick={() => fetchInitialRecommendations(true)} 
+            onClick={() => {
+              localStorage.removeItem(CACHE_KEY);
+              fetchInitialRecommendations(true);
+            }} 
             isLoading={refreshing}
             className="rounded-2xl border-white/5 h-fit py-4"
           >
@@ -323,6 +444,14 @@ export const HomePage: React.FC = () => {
           <p className="text-zinc-700 mt-2">Adiciona mais filmes ao teu histórico para novas sugestões.</p>
         </div>
       )}
+
+      <RatingModal
+        movie={ratingModalMovie}
+        isOpen={!!ratingModalMovie}
+        onClose={() => setRatingModalMovie(null)}
+        onRate={handleRateAndAdd}
+        onSkip={handleSkipRating}
+      />
     </MainLayout>
   );
 };

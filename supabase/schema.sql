@@ -12,7 +12,8 @@ CREATE TABLE IF NOT EXISTS public.watched_items (
   rating DECIMAL(3,1) CHECK (rating BETWEEN 0 AND 10),
   user_note TEXT,
   watched_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  UNIQUE(user_id, title)
 );
 
 -- 2. Watchlist ("A Ver")
@@ -25,17 +26,19 @@ CREATE TABLE IF NOT EXISTS public.watchlist_items (
   poster_path TEXT,
   status TEXT CHECK (status IN ('pending', 'watching', 'completed')) DEFAULT 'pending',
   ai_reason TEXT, -- Justificação da IA quando foi recomendado
-  added_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+  added_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  UNIQUE(user_id, title)
 );
 
--- 3. Feedback de recomendações recusadas (Para Fase 2, mas já deixamos a tabela criada)
+-- 3. Feedback de recomendações recusadas
 CREATE TABLE IF NOT EXISTS public.rejected_suggestions (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
   tmdb_id INTEGER NOT NULL,
   title TEXT NOT NULL,
   rejection_reason TEXT,
-  rejected_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+  rejected_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  UNIQUE(user_id, title)
 );
 
 -- ==============================================================================

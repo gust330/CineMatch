@@ -3,7 +3,7 @@ import { supabase } from '../services/supabase';
 import { MainLayout } from '../layouts/MainLayout';
 import { Button } from '../components/Button';
 import { useNavigate } from 'react-router-dom';
-import { History, Film, Tv, Trash2, Plus } from 'lucide-react';
+import { History, Film, Tv, Trash2, Plus, Star } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '../utils/cn';
 
@@ -64,12 +64,6 @@ export const HistoryPage: React.FC = () => {
       setItems(prev => prev.filter(item => item.id !== id));
       fetchHistory(); // Recalculate stats
     }
-  };
-
-  const getRatingColor = (rating: number) => {
-    if (rating >= 8) return 'text-green-400 bg-green-500/20 border-green-500/30';
-    if (rating >= 6) return 'text-yellow-400 bg-yellow-500/20 border-yellow-500/30';
-    return 'text-rose-400 bg-rose-500/20 border-rose-500/30';
   };
 
   const getRatingLabel = (rating: number) => {
@@ -173,10 +167,25 @@ export const HistoryPage: React.FC = () => {
                   
                   {/* Rating Badge */}
                   <div className={cn(
-                    "absolute top-3 right-3 w-10 h-10 rounded-full flex items-center justify-center border font-black text-sm",
-                    getRatingColor(item.rating)
+                    "absolute top-3 right-3 flex items-center justify-center gap-0.5 px-2 py-1 rounded-full border",
+                    item.rating >= 8 ? 'bg-green-500/20 border-green-500/30' :
+                    item.rating >= 6 ? 'bg-yellow-500/20 border-yellow-500/30' :
+                    'bg-rose-500/20 border-rose-500/30'
                   )}>
-                    {item.rating}
+                    <Star className={cn(
+                      'w-3 h-3',
+                      item.rating >= 8 ? 'fill-green-400 text-green-400' :
+                      item.rating >= 6 ? 'fill-yellow-400 text-yellow-400' :
+                      'fill-rose-400 text-rose-400'
+                    )} />
+                    <span className={cn(
+                      'text-xs font-black',
+                      item.rating >= 8 ? 'text-green-400' :
+                      item.rating >= 6 ? 'text-yellow-400' :
+                      'text-rose-400'
+                    )}>
+                      {Math.round(item.rating / 2)}
+                    </span>
                   </div>
 
                   {/* Hover Info */}

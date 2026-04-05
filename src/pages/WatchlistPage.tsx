@@ -2,10 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../services/supabase';
 import { MainLayout } from '../layouts/MainLayout';
 import { Button } from '../components/Button';
+import { RatingModal } from '../components/RatingModal';
+import { useToast } from '../components/Toast';
 import { useNavigate } from 'react-router-dom';
 import { Bookmark, Eye, CheckCircle, Clock, Trash2, Film, Tv } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '../utils/cn';
+import type { Movie } from '../types';
 
 interface WatchlistItem {
   id: string;
@@ -26,7 +29,10 @@ const statusConfig = {
 export const WatchlistPage: React.FC = () => {
   const [items, setItems] = useState<WatchlistItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [ratingModalItem, setRatingModalItem] = useState<WatchlistItem | null>(null);
+  const [ratingModalMovie, setRatingModalMovie] = useState<Movie | null>(null);
   const navigate = useNavigate();
+  const { showToast } = useToast();
 
   useEffect(() => {
     fetchWatchlist();
@@ -60,37 +66,76 @@ export const WatchlistPage: React.FC = () => {
     if (!error) {
       setItems(prev => prev.map(item => item.id === id ? { ...item, status: newStatus } : item));
       
-      // Se marcó como completado, perguntar se quer avaliar
       if (newStatus === 'completed') {
         const item = items.find(i => i.id === id);
         if (item) {
-          const rate = confirm(`Marcastes "${item.title}" como visto! Queres avaliar agora?`);
-          if (rate) {
-            // Marcar como visto no histórico
-            await supabase.from('watched_items').insert({
-              user_id: (await supabase.auth.getUser()).data.user?.id,
-              tmdb_id: 0,
-              media_type: item.media_type,
-              title: item.title,
-              poster_path: item.poster_path,
-              rating: 8, // Rating padrão
-              watched_at: new Date().toISOString()
-            });
-            
-            // Remover da watchlist
-            await supabase.from('watchlist_items').delete().eq('id', id);
-            setItems(prev => prev.filter(i => i.id !== id));
-            alert('Adicionado ao teu histórico!');
-          }
+          const movie: Movie = {
+            imdbID: '',
+            Title: item.title,
+            Year: '',
+            Poster: item.poster_path,
+            Type: item.media_type
+          };
+          setRatingModalMovie(movie);
+          setRatingModalItem(item);
         }
       }
     }
+  };
+
+  const handleRateAndComplete = async (rating: number) => {
+    if (!ratingModalItem) return;
+
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      await supabase.from('watched_items').insert({
+        user_id: user.id,
+        tmdb_id: 0,
+        media_type: ratingModalItem.media_type,
+        title: ratingModalItem.title,
+        poster_path: ratingModalItem.poster_path,
+        rating: rating * 2,
+        watched_at: new Date().toISOString()
+      });
+      
+      await supabase.from('watchlist_items').delete().eq('id', ratingModalItem.id);
+      setItems(prev => prev.filter(i => i.id !== ratingModalItem.id));
+    }
+
+    setRatingModalMovie(null);
+    setRatingModalItem(null);
+    showToast('Adicionado ao teu histórico!');
+  };
+
+  const handleSkipRating = async () => {
+    if (!ratingModalItem) return;
+
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      await supabase.from('watched_items').insert({
+        user_id: user.id,
+        tmdb_id: 0,
+        media_type: ratingModalItem.media_type,
+        title: ratingModalItem.title,
+        poster_path: ratingModalItem.poster_path,
+        rating: 8,
+        watched_at: new Date().toISOString()
+      });
+      
+      await supabase.from('watchlist_items').delete().eq('id', ratingModalItem.id);
+      setItems(prev => prev.filter(i => i.id !== ratingModalItem.id));
+    }
+
+    setRatingModalMovie(null);
+    setRatingModalItem(null);
+    showToast('Adicionado ao teu histórico!');
   };
 
   const removeItem = async (id: string) => {
     const { error } = await supabase.from('watchlist_items').delete().eq('id', id);
     if (!error) {
       setItems(prev => prev.filter(item => item.id !== id));
+      showToast('Removido da watchlist');
     }
   };
 
@@ -229,6 +274,17 @@ export const WatchlistPage: React.FC = () => {
           </AnimatePresence>
         </div>
       )}
+
+      <RatingModal
+        movie={ratingModalMovie}
+        isOpen={!!ratingModalMovie}
+        onClose={() => {
+          setRatingModalMovie(null);
+          setRatingModalItem(null);
+        }}
+        onRate={handleRateAndComplete}
+        onSkip={handleSkipRating}
+      />
     </MainLayout>
   );
 };

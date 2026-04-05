@@ -1,6 +1,7 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './hooks/useAuth';
+import { ToastProvider } from './components/Toast';
 import { AuthPage } from './pages/auth/AuthPage';
 import { OnboardingPage } from './pages/onboarding/OnboardingPage';
 import { HomePage } from './pages/HomePage';
@@ -27,18 +28,20 @@ const PrivateRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => 
 
 function App() {
   return (
-    <AuthProvider>
-      <Router>
-        <Routes>
-          <Route path="/auth" element={<AuthPage />} />
-          <Route path="/onboarding" element={<OnboardingPage />} />
-          <Route path="/" element={<PrivateRoute><HomePage /></PrivateRoute>} />
-          <Route path="/watchlist" element={<PrivateRoute><WatchlistPage /></PrivateRoute>} />
-          <Route path="/history" element={<PrivateRoute><HistoryPage /></PrivateRoute>} />
-          <Route path="/profile" element={<PrivateRoute><ProfilePage /></PrivateRoute>} />
-        </Routes>
-      </Router>
-    </AuthProvider>
+    <ToastProvider>
+      <AuthProvider>
+        <Router>
+          <Routes>
+            <Route path="/auth" element={<AuthPage />} />
+            <Route path="/onboarding" element={<OnboardingPage />} />
+            <Route path="/" element={<PrivateRoute><HomePage /></PrivateRoute>} />
+            <Route path="/watchlist" element={<PrivateRoute><WatchlistPage /></PrivateRoute>} />
+            <Route path="/history" element={<PrivateRoute><HistoryPage /></PrivateRoute>} />
+            <Route path="/profile" element={<PrivateRoute><ProfilePage /></PrivateRoute>} />
+          </Routes>
+        </Router>
+      </AuthProvider>
+    </ToastProvider>
   );
 }
 

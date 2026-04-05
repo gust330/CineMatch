@@ -3,6 +3,7 @@ import { supabase } from '../services/supabase';
 import { useAuth } from '../hooks/useAuth';
 import { MainLayout } from '../layouts/MainLayout';
 import { Button } from '../components/Button';
+import { useToast } from '../components/Toast';
 import { User, Mail, LogOut, Trash2, BarChart3, Shield } from 'lucide-react';
 import { motion } from 'framer-motion';
 
@@ -23,6 +24,7 @@ interface ProfileStats {
 export const ProfilePage: React.FC = () => {
   const { user, signOut } = useAuth();
   const [stats, setStats] = useState<ProfileStats>({ totalWatched: 0, totalWatchlist: 0, avgRating: 0 });
+  const { showToast } = useToast();
 
   useEffect(() => {
     fetchStats();
@@ -68,8 +70,11 @@ export const ProfilePage: React.FC = () => {
       if (doubleConfirm && user) {
         await supabase.from('watched_items').delete().eq('user_id', user.id);
         await supabase.from('watchlist_items').delete().eq('user_id', user.id);
-        alert('Todos os dados foram eliminados.');
-        window.location.href = '/';
+        await supabase.from('rejected_suggestions').delete().eq('user_id', user.id);
+        showToast('Todos os dados foram eliminados.');
+        setTimeout(() => {
+          window.location.href = '/';
+        }, 1500);
       }
     }
   };
